@@ -29,4 +29,7 @@ go.work.sum
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
+
+# For git init for testing without ruining the original repo ( in theory at least )
+sub/
