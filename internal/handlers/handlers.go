@@ -61,8 +61,11 @@ func extractRepoName(path string) string {
 // This endpoint is called by git client to discover refs and capabilities
 func (h *GitHandler) InfoRefs(c *gin.Context) {
 	service := c.Query("service")
-	repoName := extractRepoName(c.Request.URL.Path)
-	
+	repoName := c.GetString("repoName")
+
+	// Reset status code since NoRoute sets 404
+	c.Status(http.StatusOK)
+
 	fmt.Printf("[INFO] Incoming request: GET %s?service=%s\n", c.Request.URL.Path, service)
 	fmt.Printf("[INFO] Repository: %s\n", repoName)
 	fmt.Printf("[INFO] Request headers: %v\n", c.Request.Header)
@@ -90,8 +93,11 @@ func (h *GitHandler) InfoRefs(c *gin.Context) {
 // ReceivePack handles POST /<repo>.git/git-receive-pack
 // This endpoint receives the git push data
 func (h *GitHandler) ReceivePack(c *gin.Context) {
-	repoName := extractRepoName(c.Request.URL.Path)
-	
+	repoName := c.GetString("repoName")
+
+	// Reset status code since NoRoute sets 404
+	c.Status(http.StatusOK)
+
 	fmt.Printf("[INFO] Incoming request: POST %s\n", c.Request.URL.Path)
 	fmt.Printf("[INFO] Repository: %s\n", repoName)
 	fmt.Printf("[INFO] Request headers: %v\n", c.Request.Header)
@@ -271,31 +277,68 @@ func formatPktLines(data []byte) string {
 
 // RegisterRoutes registers the git protocol routes on the gin engine
 // Supports dynamic repo names: /<repo>.git/info/refs and /<repo>.git/git-receive-pack
+// Note: This is kept for backwards compatibility but HandleRequest is preferred
 func (h *GitHandler) RegisterRoutes(r *gin.Engine) {
-	// Register catch-all handlers for both GET and POST
-	r.GET("/*path", func(c *gin.Context) {
-		h.handleGitRequest(c)
-	})
-	r.POST("/*path", func(c *gin.Context) {
-		h.handleGitRequest(c)
-	})
+	// No longer used - routing is handled via HandleRequest
+}
+
+// extractRepoNameFromGitPath extracts repo name from git protocol paths
+// e.g., "/test1.git/info/refs" -> "test1"
+func extractRepoNameFromGitPath(path string) string {
+	// Remove leading slash
+	path = strings.TrimPrefix(path, "/")
+
+	// Find .git in the path
+	idx := strings.Index(path, ".git")
+	if idx > 0 {
+		return path[:idx]
+	}
+
+	return "default"
+}
+
+// HandleRequest handles git protocol requests
+// It routes to the appropriate handler based on the path
+func (h *GitHandler) HandleRequest(c *gin.Context) {
+	path := c.Request.URL.Path
+
+	// Extract repo name from path
+	repoName := extractRepoNameFromGitPath(path)
+	c.Set("repoName", repoName)
+
+	// Route to appropriate handler
+	if strings.HasSuffix(path, "/info/refs") {
+		h.InfoRefs(c)
+		return
+	}
+
+	if strings.HasSuffix(path, "/git-receive-pack") {
+		h.ReceivePack(c)
+		return
+	}
+
+	c.String(http.StatusNotFound, "Not found")
 }
 
 // handleGitRequest routes git requests to the appropriate handler
 func (h *GitHandler) handleGitRequest(c *gin.Context) {
 	path := c.Request.URL.Path
-	
+
 	// Check if it's a git request
 	if strings.HasSuffix(path, "/info/refs") {
+		repoName := extractRepoNameFromGitPath(path)
+		c.Set("repoName", repoName)
 		h.InfoRefs(c)
 		return
 	}
-	
+
 	if strings.HasSuffix(path, "/git-receive-pack") {
+		repoName := extractRepoNameFromGitPath(path)
+		c.Set("repoName", repoName)
 		h.ReceivePack(c)
 		return
 	}
-	
+
 	// Not a git request
 	c.String(http.StatusNotFound, "Not found")
 }
