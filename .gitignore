@@ -33,3 +33,4 @@ go.work.sum
 
 # For git init for testing without ruining the original repo ( in theory at least )
 sub/
+data/
